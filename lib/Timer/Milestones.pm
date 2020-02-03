@@ -17,7 +17,7 @@ $VERSION = eval $VERSION;
 
 =head1 NAME
 
-Timer::Milestones - measure code execution time succinctly
+Timer::Milestones - measure code execution time succinctly by setting milestones
 
 =head1 VERSION
 
@@ -25,7 +25,8 @@ This is version 0.001.
 
 =head1 SYNOPSIS
 
- use Timer::Milestones qw(start_timing mark_milestone stop_timing time_method);
+ use Timer::Milestones qw(start_timing mark_milestone stop_timing
+     time_method);
 
  start_timing();
  time_method('Some::ThirdParty::Module::do_slow_thing');
@@ -40,6 +41,16 @@ This is version 0.001.
  }
  ...
  stop_timing();
+
+Spits out to STDERR e.g.
+
+ START: I<when we started measuring things>
+      3.141 s
+ Everything set up
+      5 min 30 s
+ Telling the user
+     12 min  7 s
+ END: I<when this all finished>
 
 =head1 DESCRIPTION
 
