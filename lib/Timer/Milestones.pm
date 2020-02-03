@@ -451,11 +451,97 @@ sub DESTROY {
     $self->stop_timing;
 }
 
+=head2 Timing other people's code
+
+Adding calls to L</mark_milestone> throughout your code is all very well, but
+sometimes you want to time a small handful of methods deep in someone else's
+code (or deep in I<your> code - same difference). By carefully targeting only
+a few methods to time, you can avoid the pitfalls of profiling with
+L<Devel::NYTProf>, where code that does zillions of fast method calls will
+appear to be much slower than it is when not profiling.
+
+=head3 time_function
+
+ In: $function_name
+
+Supplied with a function name, e.g. C<DBIx::Class::Storage::DBI::_dbh_execute>,
+wraps it with a temporary shim that records the time spent inside this function.
+That shim is removed, and the original code restored, when timing stops.
+
+TODO: cope with locally-specced functions.
+
+=cut
+
+sub time_function {
+    my ($self, $function_name) = _object_and_arguments(@_);
+
+    # There had better be a function of this name.
+    no strict 'refs';
+    my $orig_code = \&{ $function_name };
+    use strict 'refs';
+    if (!defined &$orig_code) {
+        die "No such function as $function_name";
+    }
+
+    # OK, generate a wrapper.
+    my $wrapper = sub {
+        # Remember how this function was called.
+        my @params = @_;
+        my $wantarray = wantarray;
+
+        # Take a snapshot before we called it.
+        push @{ $self->{milestones}[-1]{function_calls} ||= [] },
+            my $function_call = {
+            function_name => $function_name,
+            started       => $self->_now,
+            };
+
+        # Call it.
+        my ($scalar_return, @list_return);
+        if ($wantarray) {
+            @list_return = $orig_code->(@params);
+        } elsif (defined $wantarray) {
+            $scalar_return = $orig_code->(@params);
+        } else {
+            $orig_code->(@params);
+        }
+
+        # Take a snapshot at the end.
+        $function_call->{ended} = $self->_now;
+
+        # And return the original return values.
+        if ($wantarray) {
+            return @list_return;
+        } elsif (defined $wantarray) {
+            return $scalar_return;
+        } else {
+            return;
+        }
+    };
+
+    # And install that.
+    no strict 'refs';
+    no warnings 'redefine';
+    *{ $function_name } = $wrapper;
+    use warnings 'redefine';
+    use strict 'refs';
+
+    # Remember that we did this, so we can unwind it all.
+    push @{ $self->{wrapped_functions} ||= [] },
+        {
+        function_name => $function_name,
+        orig_code     => $orig_code,
+        };
+}
+
 =head1 SEE ALSO
 
 L<Timer::Simple>, which is simpler but more verbose.
 
 L<Devel::Timer>, which does similar things.
+
+L<Devel::NYTProf>, which is probably worth using as a first pass, even if you
+don't necessarily trust its idea of what's I<actually> slow.
 
 =head1 AUTHOR
 
