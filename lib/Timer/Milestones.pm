@@ -284,13 +284,16 @@ sub _generate_report_from_elements {
     my ($self, @elements) = @_;
 
     # Work out how much time passed between all intervals so far.
-    # Start with a value fractionally greater than 0 in case all our timestamps
-    # are equal (which *can* happen if you're testing very, very fast code),
-    # to avoid a divide by zero error later on when we work out percentages.
-    my $total_elapsed_time = 0.000_001;
+    my $total_elapsed_time = 0;
     for my $element (grep { $_->{type} eq 'interval' } @elements) {
         $total_elapsed_time += $element->{elapsed_time};
     }
+
+    # In case all our timestamps are equal (which *can* happen if you're
+    # testing very, very fast code, or Time::HiRes isn't working), tweak the
+    # total elapsed time to merely be *very small*, to avoid a divide by zero
+    # error later on when we work out percentages.
+    $total_elapsed_time ||= 0.000_001;
 
     # Now we can report all of this: static times, and intervals between them.
     my $report;
