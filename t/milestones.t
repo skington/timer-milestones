@@ -17,6 +17,11 @@ use Test2::Tools::Compare qw(is like array item end);
 
 use Timer::Milestones qw(:all);
 
+# We're not testing reports here, so silence them.
+no warnings 'redefine';
+local *Timer::Milestones::_default_notify_report = sub { return sub {} };
+use warnings 'redefine';
+
 local $Data::Dumper::Indent   = 1;
 local $Data::Dumper::Terse    = 1;
 local $Data::Dumper::Sortkeys = 1;
@@ -37,7 +42,7 @@ done_testing();
 sub test_simple_start_stop {
     # Create a new Timer object. It starts off with a milestone called START
     # and a time.
-    my $timer = Timer::Milestones->new(notify_report => sub {});
+    my $timer = Timer::Milestones->new;
     is(ref($timer), 'Timer::Milestones', 'We have a valid-looking object');
     my %expected_guts
         = (milestones => [{ name => 'START', started => $re_timestamp }]);
@@ -82,10 +87,7 @@ sub test_add_milestones {
     my @times = qw(123 405 789 880);
     my $get_time
         = sub { my $time = shift @times or croak 'Ran out of times!'; $time };
-    my $timer = Timer::Milestones->new(
-        get_time      => $get_time,
-        notify_report => sub { }
-    );
+    my $timer = Timer::Milestones->new(get_time => $get_time);
     $timer->add_milestone('Part-way through');
     $timer->add_milestone('Almost there');
     $timer->stop_timing;
@@ -130,7 +132,7 @@ sub test_add_milestones {
 
 # If you don't specify a name, one is worked out for you.
 sub test_default_milestone_name {
-    my $timer = Timer::Milestones->new(notify_report => sub {});
+    my $timer = Timer::Milestones->new;
     my $expect_line = __LINE__ + 1;
     $timer->add_milestone;
     like(
@@ -166,7 +168,7 @@ sub test_default_milestone_name {
 # If you stop timing, you can't add any more milestones.
 
 sub test_ending_timing_thwarts_add_milestone {
-    my $timer = Timer::Milestones->new(notify_report => sub { });
+    my $timer = Timer::Milestones->new;
     $timer->add_milestone('I can add this milestone');
     $timer->stop_timing;
     ok(

@@ -99,8 +99,12 @@ Creates a new Timer::Milestones object, and calls L</start_timing> on it.
 =cut
 
 sub new {
+    # Start off with an empty hashref
     my $invocant = shift;
     my $self = bless {} => ref($invocant) || $invocant;
+
+    # Accept replacement coderefs for get_time and notify_report (mostly
+    # used in tests), and otherwise populate them with default values.
     if (my %params = @_) {
         for my $coderef_param (qw(get_time notify_report)) {
             if (ref($params{$coderef_param}) eq 'CODE') {
@@ -108,6 +112,10 @@ sub new {
             }
         }
     }
+    $self->{get_time}      ||= $self->_default_get_time;
+    $self->{notify_report} ||= $self->_default_notify_report;
+
+    # Start timing, and return this object.
     $self->start_timing;
     return $self;
 }
