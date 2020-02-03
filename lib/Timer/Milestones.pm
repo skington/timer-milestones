@@ -373,7 +373,13 @@ Stops timing, and returns a report for all of the milestones.
 
 sub generate_final_report {
     my ($self) = _object_and_arguments(@_);
-    $self->_stop_timing;
+
+    if (!$self->{timing_stopped}) {
+        my $milestone = $self->_end_previous_milestone;
+        $self->{timing_stopped} = $milestone->{ended};
+        delete $self->{generated_report};
+    }
+
     return $self->_generate_report;
 }
 
@@ -395,15 +401,6 @@ sub stop_timing {
 
 sub _default_notify_report {
     sub { my $report = shift; print STDERR $report }
-}
-
-sub _stop_timing {
-    my ($self) = @_;
-
-    return $self->{timing_stopped} if $self->{timing_stopped};
-    my $milestone = $self->_end_previous_milestone;
-    $self->{timing_stopped} = $milestone->{ended};
-    delete $self->{generated_report};
 }
 
 # Makes sure that we have a list of milestones; if we also had a previous
