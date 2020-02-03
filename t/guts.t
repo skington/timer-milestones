@@ -69,8 +69,9 @@ sub test_object_and_arguments {
     # But if we pass it a blessed object of the right kind, it's returned
     # as-is.
     @DJO::AppleJuice::ISA = qw(Timer::Milestones);
-    my $unlikely_guts = 'I have a business installing styrofoam nuns';
-    my $unlikely_object = bless \$unlikely_guts => 'DJO::AppleJuice';
+    my $unlikely_object
+        = bless { quote => 'I have a business installing styrofoam nuns' } =>
+        'DJO::AppleJuice';
     my ($as_is_object)
         = Timer::Milestones::_object_and_arguments($unlikely_object);
     is(ref($as_is_object), 'DJO::AppleJuice',

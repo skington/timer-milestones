@@ -82,7 +82,10 @@ sub test_add_milestones {
     my @times = qw(123 405 789 880);
     my $get_time
         = sub { my $time = shift @times or croak 'Ran out of times!'; $time };
-    my $timer = Timer::Milestones->new(get_time => $get_time);
+    my $timer = Timer::Milestones->new(
+        get_time      => $get_time,
+        notify_report => sub { }
+    );
     $timer->add_milestone('Part-way through');
     $timer->add_milestone('Almost there');
     $timer->stop_timing;
@@ -163,7 +166,7 @@ sub test_default_milestone_name {
 # If you stop timing, you can't add any more milestones.
 
 sub test_ending_timing_thwarts_add_milestone {
-    my $timer = Timer::Milestones->new;
+    my $timer = Timer::Milestones->new(notify_report => sub { });
     $timer->add_milestone('I can add this milestone');
     $timer->stop_timing;
     ok(
@@ -177,9 +180,18 @@ sub test_ending_timing_thwarts_add_milestone {
 # All of this works using exported functions.
 
 sub test_exported_functions {
+    # We'll test that ending testing spits out stuff to STDERR elsewhere,
+    # but for the moment just make it shut up.
+    # This is probably not Windows-safe.
+    local *STDERR;
+    open(STDERR, '>', '/dev/null');
+
+    # Right, call our exported functions very simply.
     start_timing();
     add_milestone('This is really simple');
     stop_timing();
+
+    # That updated our singleton.
     my ($singleton) = Timer::Milestones::_object_and_arguments;
     like(
         $singleton,

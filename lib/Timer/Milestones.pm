@@ -91,8 +91,10 @@ sub new {
     my $invocant = shift;
     my $self = bless {} => ref($invocant) || $invocant;
     if (my %params = @_) {
-        if (ref($params{get_time}) eq 'CODE') {
-            $self->{get_time} = $params{get_time};
+        for my $coderef_param (qw(get_time notify_report)) {
+            if (ref($params{$coderef_param}) eq 'CODE') {
+                $self->{$coderef_param} = $params{$coderef_param};
+            }
         }
     }
     $self->start_timing;
@@ -200,6 +202,12 @@ reached since then.
 
 sub generate_intermediate_report {
     my ($self) = _object_and_arguments(@_);
+    
+    $self->_generate_report;
+}
+
+sub _generate_report {
+    my ($self) = @_;
 
     # If we've got nothing new since the last time since we said anything,
     # don't say anything.
@@ -351,7 +359,7 @@ Stops timing, and returns a report for all of the milestones.
 sub generate_final_report {
     my ($self) = _object_and_arguments(@_);
     $self->_stop_timing;
-    return $self->generate_intermediate_report;
+    return $self->_generate_report;
 }
 
 =head3 stop_timing
@@ -364,10 +372,14 @@ scope. This does nothing if you've already called L</generate_final_report>.
 
 sub stop_timing {
     my ($self) = _object_and_arguments(@_);
-    $self->_stop_timing;
-    if (my $report = $self->generate_intermediate_report) {
-        print STDERR $report;
+    if (my $report = $self->generate_final_report) {
+        $self->{notify_report} ||= $self->_default_notify_report;
+        return $self->{notify_report}->($report);
     }
+}
+
+sub _default_notify_report {
+    sub { my $report = shift; print STDERR $report }
 }
 
 sub _stop_timing {
@@ -410,13 +422,11 @@ sub _default_get_time {
         : sub { time };
 }
 
-=head3 generate_report
+sub DESTROY {
+    my ($self) = @_;
 
- Out: $report (optional)
-
-If no report has been generated yet, generates a timing report, and either
-prints it to STDERR (in void context) or returns it (scalar or list context).
-If a report has already been generated, does nothing.
+    $self->stop_timing;
+}
 
 =head1 SEE ALSO
 

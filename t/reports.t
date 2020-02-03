@@ -5,6 +5,7 @@ use strict;
 use warnings;
 
 use Carp;
+use Test::Fatal;
 # Prototype disagreement between Test::More and Test2::Tools::Compare, so
 # explicitly use the Test2::Tools::Compare versions.
 use Test::More import => [qw(!is !like)];
@@ -13,6 +14,7 @@ use Test2::Tools::Compare qw(is like);
 use Timer::Milestones qw(:all);
 
 test_generate_report();
+test_report_notification();
 
 done_testing();
 
@@ -26,9 +28,10 @@ sub test_generate_report {
          77904323, # roughly 5 minutes later
          77905110, # 18 1/2 minutes after the start
         118166400, # 12pm months later when the problem is "discovered"
+             time, # Now, when some bright spark thinks of something new
     );
     my $localtime_start = localtime($times[0]);
-    my $localtime_end   = localtime($times[-1]);
+    my $localtime_end   = localtime($times[-2]);
     my $get_time
         = sub { my $time = shift @times or croak 'Ran out of times!'; $time };
     my $timer = Timer::Milestones->new(get_time => $get_time);
@@ -96,12 +99,72 @@ sub test_generate_report {
         !defined $timer->generate_final_report,
         'If we ask for a "final" report again, nothing'
     );
+
+    # Once we have a final report, we cannot add more milestones.
+    ok(
+        exception { $timer->add_milestone('The truth, revealed!') },
+        'We cannot add more milestones after a final report'
+    );    
 }
 
-=for later
+# When an object stops, or goes out of scope, we notify the caller of its
+# final report.
 
-An object going out of scope generates a report to STDERR.
+sub test_report_notification {
+    my $automatic_report;
 
-=cut
+    # If we explicitly say stop_timing, a report is generated.
+    my $verbose_timer
+        = Timer::Milestones->new(
+        notify_report => sub { $automatic_report = shift });
+    $verbose_timer->add_milestone('Done something');
+    $verbose_timer->stop_timing;
+    like(
+        $automatic_report,
+        qr{
+            ^
+            START: \s [^\n]+ \n
+            \s{4} [^\n]+ \n
+            \QDone something\E \n
+            \s{4} [^\n]+ \n
+            END: \s .+
+            $
+        }xsm,
+        'Stopping timing generated a report'
+    );
+
+    # (But if we'd already generated a report, nothing happens.)
+    my $quiet_timer
+        = Timer::Milestones->new(
+        notify_report => sub { $automatic_report = shift });
+    $automatic_report = 'Nothing to see here';
+    $quiet_timer->add_milestone('Nobody needs to know');
+    my $quiet_report = $quiet_timer->generate_final_report;
+    like(
+        $quiet_report,
+        qr{Nobody needs to know},
+        'We got a report from generate_final_report'
+    );
+    $quiet_timer->stop_timing;
+    is(
+        $automatic_report,
+        'Nothing to see here',
+        'Because we generated a report explicitly, nothing else got reported'
+    );
+
+    # This also happens if our object goes out of scope.
+    my $out_of_scope_report;
+    my $temporary_timer = Timer::Milestones->new(
+        notify_report => sub { $out_of_scope_report = shift });
+    $temporary_timer->add_milestone(
+        'Confront the bad guy without having told anybody else'
+    );
+    undef $temporary_timer;
+    like(
+        $out_of_scope_report,
+        qr/Confront the bad guy/,
+        'Going out of scope also triggers a final report'
+    );
+}
 
 1;
