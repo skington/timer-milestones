@@ -23,6 +23,8 @@ use warnings 'redefine';
 
 test_validity();
 test_timing();
+test_pass_through();
+
 done_testing();
 
 # You can't intercept any old thing.
@@ -101,6 +103,43 @@ sub test_timing {
     );
 }
 
-### TODO: check that variables are passed through and returned correctly.
+# Variables are passed through correctly.
+sub test_pass_through {
+    # Set up a function that mangles its provided arguments, returns different
+    # values according to context, and takes a note of what they were.
+    my $provided;
+    no warnings 'closure';
+    sub _summarise {
+        my @arguments = @_;
+
+        $provided = scalar @arguments . ' arguments';
+        if (wantarray) {
+            return map { substr($_, 0, 3) } @arguments;
+        } elsif (defined wantarray) {
+            return $provided;
+        } else {
+            return;
+        }
+    }
+    use warnings 'closure';
+
+    # The arguments are passed through correctly in all contexts.
+    my $timer = Timer::Milestones->new;
+    $timer->time_function(__PACKAGE__ . '::_summarise');
+
+    _summarise(qw(ignore all of this stuff), { including => 'this' });
+    is($provided, '6 arguments', 'Arguments passed in void context');
+
+    is(scalar _summarise('bunch', 'of', 'stuff'), '3 arguments',
+        'Return value correct in scalar context');
+    is($provided, '3 arguments', 'Arguments passed in scalar context');
+
+    is(
+        [_summarise('Wossname', 'doohickey')],
+        ['Wos', 'doo'],
+        'Return value correct in list context'
+    );
+    is($provided, '2 arguments', 'Arguments passed in list contet');
+}
 
 1;
