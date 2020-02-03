@@ -169,6 +169,10 @@ sub add_milestone {
 
     # Remember this new milestone.
     push @{ $self->{milestones} }, $milestone;
+
+    # We can now usefully generate a new report.
+    delete $self->{generated_report};
+
     return $milestone;
 }
 
@@ -184,18 +188,195 @@ sub _milestone_name {
     }
 }
 
+=head3 generate_intermediate_report
+
+ Out: $report
+
+Returns a report on the milestones that have elapsed so far, or undef if a
+report has previously been generated and no new milestones have been
+reached since then.
+
+=cut
+
+sub generate_intermediate_report {
+    my ($self) = _object_and_arguments(@_);
+
+    # If we've got nothing new since the last time since we said anything,
+    # don't say anything.
+    return if $self->{generated_report};
+
+    # There's also nothing to say if we don't have any milestones other than
+    # the START one.
+    return if !$self->{milestones} || @{ $self->{milestones} } == 1;
+
+    # Build up a report.
+    my ($previous_milestone, @elements);
+    for my $milestone (@{ $self->{milestones} }) {
+        # If this is the first milestone, mention when this milestone started,
+        # as it's the start of it all.
+        if (!$previous_milestone) {
+            push @elements,
+                {
+                type => 'time',
+                name => $milestone->{name},
+                time => $milestone->{started},
+                };
+        }
+
+        # But if we *do* have a previous milestone, we can now report how long
+        # it took to get to this one.
+        if ($previous_milestone) {
+            my $elapsed_time = $previous_milestone->{ended}
+                - $previous_milestone->{started};
+            push @elements,
+                { type => 'interval',  elapsed_time => $elapsed_time },
+                { type => 'milestone', name         => $milestone->{name} };
+        }
+        
+        # Remember this milestone for when we reach the next one.
+        $previous_milestone = $milestone;
+    }
+
+    # If we've ended, also remember that.
+    if ($self->{timing_stopped}) {
+        push @elements,
+            {
+            type         => 'interval',
+            elapsed_time => $previous_milestone->{ended}
+                - $previous_milestone->{started}
+            },
+            {
+            type => 'time',
+            name => 'END',
+            time => $self->{timing_stopped}
+            };
+    }
+
+    # Now that we've got all the elements, generate a report from them.
+    my $report = $self->_generate_report_from_elements(@elements);
+
+    # Remember that we generated a report, so we don't produce it again.
+    $self->{generated_report} = 1;
+
+    # And return the report we generated.
+    return $report;
+}
+
+sub _generate_report_from_elements {
+    my ($self, @elements) = @_;
+
+    # Work out how much time passed between all intervals so far.
+    my $total_elapsed_time = 0;
+    for my $element (grep { $_->{type} eq 'interval' } @elements) {
+        $total_elapsed_time += $element->{elapsed_time};
+    }
+
+    # Now we can report all of this: static times, and intervals between them.
+    my $report;
+    for my $element (@elements) {
+        if ($element->{type} eq 'time') {
+            $report .= $element->{name} . ': '
+                . localtime($element->{time}) . "\n";
+        } elsif ($element->{type} eq 'milestone') {
+            $report .= $element->{name} . "\n";
+        } elsif ($element->{type} eq 'interval') {
+            my $elapsed_time_ratio
+                = $element->{elapsed_time} / $total_elapsed_time;
+            $report .= sprintf(
+                "    %s (%6.2f%%)\n",
+                $self->_human_elapsed_time($element->{elapsed_time}),
+                $elapsed_time_ratio * 100
+            );
+        } else {
+            croak 'What the hell is an element of type '
+                . $element->{type} . '?';
+        }        
+    }
+    return $report;
+}
+
+sub _human_elapsed_time {
+    my ($self, $elapsed_time) = @_;
+
+    my @unit_specs = $self->_unit_specs;
+    unit_spec:
+    for my $unit_spec (@unit_specs) {
+        next unit_spec
+            if $unit_spec->{max} && $elapsed_time > $unit_spec->{max};
+        return sprintf(
+            $unit_spec->{label_format},
+            $unit_spec->{transform}->($elapsed_time)
+        );
+    }
+}
+
+sub _unit_specs {
+    (
+        {
+            max          => 1,
+            label_format => '%3d ms',
+            transform    => sub { (shift) / 1_000 },
+        },
+        {
+            max => 60,
+            label_format => '%2d s',
+        },
+        {
+            max          => 60 * 60,
+            label_format => '%2d min %2d s',
+            transform    => sub {
+                my $seconds = shift;
+                ($seconds / 60, $seconds % 60)
+            },
+        },
+        {
+            label_format => '%d h %2d min',
+            transform    => sub {
+                my $seconds = shift;
+                my $minutes = $seconds / 60;
+                ($minutes / 60, $minutes % 60)
+            },
+        }
+    );
+}
+
+=head3 generate_final_report
+
+ Out: $report
+
+Stops timing, and returns a report for all of the milestones.
+
+=cut
+
+sub generate_final_report {
+    my ($self) = _object_and_arguments(@_);
+    $self->_stop_timing;
+    return $self->generate_intermediate_report;
+}
+
 =head3 stop_timing
 
-Stops timing, and call L</generate_report>. This is called automatically
-in OO mode when the object goes out of scope.
+Stops timing, and spits out the result of L</generate_intermediate_report> to
+STDERR. This is called automatically in OO mode when the object goes out of
+scope. This does nothing if you've already called L</generate_final_report>.
 
 =cut
 
 sub stop_timing {
     my ($self) = _object_and_arguments(@_);
+    $self->_stop_timing;
+    if (my $report = $self->generate_intermediate_report) {
+        print STDERR $report;
+    }
+}
+
+sub _stop_timing {
+    my ($self) = @_;
+
     return $self->{timing_stopped} if $self->{timing_stopped};
     my $milestone = $self->_end_previous_milestone;
     $self->{timing_stopped} = $milestone->{ended};
+    delete $self->{generated_report};
 }
 
 # Makes sure that we have a list of milestones; if we also had a previous
