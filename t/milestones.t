@@ -37,7 +37,7 @@ done_testing();
 sub test_simple_start_stop {
     # Create a new Timer object. It starts off with a milestone called START
     # and a time.
-    my $timer = Timer::Milestones->new;
+    my $timer = Timer::Milestones->new(notify_report => sub {});
     is(ref($timer), 'Timer::Milestones', 'We have a valid-looking object');
     my %expected_guts
         = (milestones => [{ name => 'START', started => $re_timestamp }]);
@@ -130,7 +130,7 @@ sub test_add_milestones {
 
 # If you don't specify a name, one is worked out for you.
 sub test_default_milestone_name {
-    my $timer = Timer::Milestones->new;
+    my $timer = Timer::Milestones->new(notify_report => sub {});
     my $expect_line = __LINE__ + 1;
     $timer->add_milestone;
     like(

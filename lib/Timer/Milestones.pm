@@ -224,9 +224,8 @@ sub _generate_report {
     # don't say anything.
     return if $self->{generated_report};
 
-    # There's also nothing to say if we don't have any milestones other than
-    # the START one.
-    return if !$self->{milestones} || @{ $self->{milestones} } == 1;
+    # There's also nothing to say if we don't have any milestones.
+    return if !$self->{milestones};
 
     # Build up a report.
     my ($previous_milestone, @elements);
@@ -285,7 +284,10 @@ sub _generate_report_from_elements {
     my ($self, @elements) = @_;
 
     # Work out how much time passed between all intervals so far.
-    my $total_elapsed_time = 0;
+    # Start with a value fractionally greater than 0 in case all our timestamps
+    # are equal (which *can* happen if you're testing very, very fast code),
+    # to avoid a divide by zero error later on when we work out percentages.
+    my $total_elapsed_time = 0.000_001;
     for my $element (grep { $_->{type} eq 'interval' } @elements) {
         $total_elapsed_time += $element->{elapsed_time};
     }
@@ -321,10 +323,12 @@ sub _human_elapsed_time {
     unit_spec:
     for my $unit_spec (@unit_specs) {
         next unit_spec
-            if $unit_spec->{max} && $elapsed_time > $unit_spec->{max};
+            if $unit_spec->{max} && $elapsed_time >= $unit_spec->{max};
         return sprintf(
             $unit_spec->{label_format},
-            $unit_spec->{transform}->($elapsed_time)
+            $unit_spec->{transform}
+            ? $unit_spec->{transform}->($elapsed_time)
+            : $elapsed_time
         );
     }
 }
@@ -334,7 +338,7 @@ sub _unit_specs {
         {
             max          => 1,
             label_format => '%3d ms',
-            transform    => sub { (shift) / 1_000 },
+            transform    => sub { (shift) * 1_000 },
         },
         {
             max => 60,

@@ -112,7 +112,7 @@ sub test_get_time {
         no warnings 'redefine';
         local *Time::HiRes::time = sub { return 12345 };
         use warnings 'redefine';
-        my $faked_out_timer = Timer::Milestones->new;
+        my $faked_out_timer = Timer::Milestones->new(notify_report => sub {});
         is($faked_out_timer->_now, 12345,
             q{We'll try to use Time::HiRes::time});
     }
@@ -123,7 +123,7 @@ sub test_get_time {
         no warnings 'redefine';
         local *Time::HiRes::time = sub { die 'Foolish mortals!' };
         use warnings 'redefine';
-        my $doomed_timer = Timer::Milestones->new;
+        my $doomed_timer = Timer::Milestones->new(notify_report => sub {});
         my $low_res_time = time;
         my $returned_time = $doomed_timer->_now;
         # If more than 10 seconds elapsed between us working out what time it
@@ -136,7 +136,7 @@ sub test_get_time {
         );
     }
     # We can also inject a get_time coderef into our object.
-    my $mocking_timer = Timer::Milestones->new;
+    my $mocking_timer = Timer::Milestones->new(notify_report => sub {});
     my $counter = 100;
     $mocking_timer->{get_time} = sub { $counter++ };
     is($mocking_timer->_now, 100, 'We can inject a coderef');
