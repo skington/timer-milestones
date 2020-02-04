@@ -8,7 +8,7 @@ use parent 'Exporter';
 use Carp;
 use Scalar::Util qw(blessed);
 
-our @EXPORT_OK = qw(start_timing add_milestone stop_timing);
+our @EXPORT_OK = qw(start_timing add_milestone stop_timing time_function);
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
 # Have you updated the version number in the POD below?
@@ -25,21 +25,27 @@ This is version 0.001.
 
 =head1 SYNOPSIS
 
- use Timer::Milestones qw(start_timing mark_milestone stop_timing
-     time_method);
+ use Timer::Milestones qw(start_timing add_milestone stop_timing
+     time_function);
 
  start_timing();
- time_method('Some::ThirdParty::Module::do_slow_thing');
+ time_function('Some::ThirdParty::Module::do_slow_thing');
+
  my @objects = _set_up_objects();
- mark_milestone('Everything set up');
+
+ add_milestone('Everything set up');
+
  for my $object (@objects) {
      _do_something_potentially_slow($object);
  }
- mark_milestone('Telling the user')
+
+ add_milestone('Telling the user')
+
  for my $object (@objects) {
      _inform_user($object);
  }
  ...
+
  stop_timing();
 
 Spits out to STDERR e.g.
@@ -66,10 +72,10 @@ everything under Devel::NYTProf.
 
 You can use Timer::Milestones via a functional interface:
 
- use Timer::Milestones qw(start_timing mark_milestone stop_timing);
+ use Timer::Milestones qw(start_timing add_milestone stop_timing);
  start_timing();
  ...;
- mark_milestone('Half-way through');
+ add_milestone('Half-way through');
  ...;
  stop_timing();
 
@@ -80,7 +86,7 @@ Or via an OO interface:
      my $timer = Timer::Milestones->new;
      # $timer->start_timing automatically called
      ...;
-     $timer->mark_milestone('Half-way through');
+     $timer->add_milestone('Half-way through');
      ...;
  }
  # $timer->stop_timing automatically called when $timer is destroyed
@@ -566,7 +572,7 @@ sub DESTROY {
 
 =head2 Timing other people's code
 
-Adding calls to L</mark_milestone> throughout your code is all very well, but
+Adding calls to L</add_milestone> throughout your code is all very well, but
 sometimes you want to time a small handful of methods deep in someone else's
 code (or deep in I<your> code - same difference). By carefully targeting only
 a few methods to time, you can avoid the pitfalls of profiling with
