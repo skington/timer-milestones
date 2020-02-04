@@ -32,3 +32,9 @@ MYMETA.yml
 MYMETA.json
 nytprof.out
 pm_to_blib
+
+# Ignore Pod2Html spoor
+pod2htm*.tmp
+
+# Ignore build directories and tarballs
+Timer-Milestones-*
