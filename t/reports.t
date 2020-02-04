@@ -14,6 +14,8 @@ use Test2::Tools::Compare qw(is like);
 use Timer::Milestones qw(:all);
 
 test_generate_report();
+test_time_function();
+test_time_function_summaries();
 test_report_notification();
 test_divide_by_zero();
 test_human_elapsed_time();
@@ -112,6 +114,201 @@ sub test_generate_report {
         exception { $timer->add_milestone('The truth, revealed!') },
         'We cannot add more milestones after a final report'
     );    
+}
+
+# We include any timed functions in-between the appropriate milestones.
+
+sub test_time_function {
+    # Build up a list of things that we'll do as part of the code that we're
+    # timing.
+    my @steps = (
+        0,
+        { call => 'Internal::Logging::init', meh => 1 },
+        { call => 'Internal::Finance::do_tax_stuff', meh => 1 },
+        4,
+        { call => 'Obvious::Suspect::actually_pretty_efficient' },
+        4.250,
+        { call => 'Internal::Database::start_transaction', meh => 1 },
+        5.150,
+        { milestone => 'Finished chugging through set-up' },
+        5.340,
+        { call => 'Obvious::Suspect::slow_but_could_be_worse' },
+        5.805,
+        { call => 'Internal::Shim::cause_pathological_problem', meh => 1 },
+        6.100,
+        { call => 'Obscure::Package::pathological_problem'},
+        14.980,
+        15.200,
+        { milestone => 'Done the hard work' },
+        15.400,
+        { call => 'Garbage::Collection::surprisingly_slow' },
+        17.200,
+        17.505,
+    );
+
+    # Create functions that we're going to call, and tell our object about the
+    # times that all of these things happen at.
+    no strict 'refs';
+    for my $step (grep { ref($_) && $_->{call} } @steps) {
+        *{ $step->{call} } = sub {};
+    }
+    use strict 'refs';
+    my @times = grep { !ref($_) } @steps;
+    my $timer = Timer::Milestones->new(
+        get_time => sub {
+            @times or croak 'Ran out of times!';
+            return shift @times;
+        }
+    );
+    for my $important_step (grep { ref($_) && $_->{call} && !$_->{meh} }
+        @steps)
+    {
+        $timer->time_function($important_step->{call});
+    }
+
+    # Go through our steps doing things.
+    for my $step (grep { ref($_) } @steps) {
+        if (my $function = $step->{call}) {
+            no strict 'refs';
+            &{ $function }();
+            use strict 'refs';
+        } elsif (my $milestone = $step->{milestone}) {
+            $timer->add_milestone($milestone);
+        }
+    }
+
+    # Our report should match the steps above.
+    my $report = $timer->generate_final_report;
+    my ($timing_stuff) = ($report =~ m{
+        ^
+        START: \s [^\n]+ \n
+        (.+)
+        END: \s [^\n]+ \n
+        $
+    }xsm);
+    is($timing_stuff, <<TIMING_STUFF, 'We recorded details of function calls');
+     5 s ( 29.42%)
+        250 ms Obvious::Suspect::actually_pretty_efficient
+Finished chugging through set-up
+    10 s ( 57.41%)
+        464 ms Obvious::Suspect::slow_but_could_be_worse
+           8 s Obscure::Package::pathological_problem
+Done the hard work
+     2 s ( 13.17%)
+           1 s Garbage::Collection::surprisingly_slow
+TIMING_STUFF
+}
+
+# We'll summarise function calls and/or arguments.
+
+sub test_time_function_summaries {
+    # Set up a timer, and tell it to pay attention to various things that happen
+    # during a game of rugby. We want to know about tries (who scored them),
+    # conversions (the scorer doesn't matter), penalties (who scored them,
+    # but these things pile up so just summarise them) and substitutions
+    # (pile up and don't matter in the long run, so just summarise them).
+    my $timer = Timer::Milestones->new;
+    my %time_args = (
+        try_scored => {
+            summarise_arguments => sub { shift; join(' for ', @_) }
+        },
+        conversion => {},
+        penalty    => {
+            summarise_arguments => sub { shift; join(' for ', @_) },
+            summarise_calls     => 1
+        },
+        substitution => { summarise_calls => 1 }
+    );
+    for my $function_name (keys %time_args) {
+        no strict 'refs';
+        *{"TestMatch::Rugby::$function_name"} = sub { };
+        use strict 'refs';
+        $timer->time_function(
+            "TestMatch::Rugby::$function_name",
+            %{ $time_args{$function_name} }
+        );
+    }
+
+    # Play through a rugby match.
+    my $class = 'TestMatch::Rugby';
+    $class->try_scored('Flair player', 'Exciting team');
+    for (1 .. 3) { $class->penalty('Mr Metronome', 'Boring team'); }
+    $class->try_scored('Crazy sideburns guy', 'Exciting team');
+    $class->conversion('Oh look, they do have a kicker', 'Exciting team');
+    for (1 .. 2) { $class->penalty('Mr Metronome', 'Boring team') }
+
+    $timer->add_milestone('Half-time');
+
+    $class->try_scored('Flair player', 'Exciting team');
+    for (1..4) { $class->penalty('Mr Metronome', 'Boring team')};
+    $class->substitution('Oh look, they do have a kicker', 'Exciting team');
+    $class->try_scored('Flair player', 'Exciting team');
+    $class->conversion('The full back is their kicker now?', 'Exciting team');
+    $class->substitution('Mr Metronome', 'Boring team');
+    $class->try_scored('Died his hair pink', 'Exciting team');
+    for (1 .. 3) {
+        $class->penalty('How many guys like this do they have?',
+            'Boring team')
+    }
+    $class->substitution('The full back, FFS', 'Exciting team');
+    $class->penalty('They let the physio have a go lol', 'Exciting team');
+    for (qw(a whole bunch of guys)) {
+        $class->substitution($_, 'Exciting team');
+        $class->substitution($_, 'Boring team');
+    }
+    $class->try_scored('Basically the entire front row, Warhammer-style',
+        'Boring team');
+    $class->conversion('Do they assemble these guys from kits?', 'Boring team');
+
+    # The report summarises arguments and/or function calls where it needs to.
+    # We don't care about timing here, so strip all of that out.
+    my $report = $timer->generate_final_report;
+    my ($functions_before, $functions_after) = $report =~ m{
+        ^
+        START: \s [^\n]+ \n
+        \s{4} [^\n]+ \n
+        (.+ \n)
+
+        Half-time \n
+        \s{4} [^\n]+ \n
+        (.+ \n)
+
+        END: \s [^\n]+ \n
+        $
+    }xsm;
+    for ($functions_before, $functions_after) {
+        s/^ \s{8} //xgsm;
+        s/^ \s{1,3} \d+ \s ms \s /(time) /xgsm;
+    }
+
+    # Because we said to summarise calls, each function call will be grouped
+    # with its fellow calls under the first time it happens
+    like($functions_before, <<BEFORE, 'The first half summary looks legit');
+(time) TestMatch::Rugby::try_scored
+    Flair player for Exciting team
+(time) TestMatch::Rugby::penalty (x5)
+    Mr Metronome for Boring team (x5)
+(time) TestMatch::Rugby::try_scored
+    Crazy sideburns guy for Exciting team
+(time) TestMatch::Rugby::conversion
+BEFORE
+    like($functions_after, <<AFTER, 'The second half summary looks legit');
+(time) TestMatch::Rugby::try_scored
+    Flair player for Exciting team
+(time) TestMatch::Rugby::penalty (x8)
+    Mr Metronome for Boring team (x4)
+    How many guys like this do they have? for Boring team (x3)
+    They let the physio have a go lol for Exciting team
+(time) TestMatch::Rugby::substitution (x13)
+(time) TestMatch::Rugby::try_scored
+    Flair player for Exciting team
+(time) TestMatch::Rugby::conversion
+(time) TestMatch::Rugby::try_scored
+    Died his hair pink for Exciting team
+(time) TestMatch::Rugby::try_scored
+    Basically the entire front row, Warhammer-style for Boring team
+(time) TestMatch::Rugby::conversion
+AFTER
 }
 
 # When an object stops, or goes out of scope, we notify the caller of its
