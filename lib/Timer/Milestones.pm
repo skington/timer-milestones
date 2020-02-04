@@ -44,7 +44,7 @@ This is version 0.001.
 
 Spits out to STDERR e.g.
 
- START: I<when we started measuring things>
+ START: Tue Feb  4 16:03:08 2020
       3 s (  0.28%)
  Everything set up
       5 min 30 s ( 31.22%)
@@ -52,7 +52,7 @@ Spits out to STDERR e.g.
  Telling the user
      12 min  7 s ( 68.78%)
           8 min 30 s Some::ThirdParty::Module::do_slow_thing (x3)
- END: I<when this all finished>
+ END: Tue Feb  4 16:20:48 2020
 
 =head1 DESCRIPTION
 
@@ -101,12 +101,12 @@ between the start, each milestone, and the end. Times are specified in both
 human-friendly periods (a number of milliseconds; seconds; minutes and seconds;
 or hours and minutes), and percentages of the total elapsed time.
 
-If you decide that you want to L</time_function|time individual functions
-as well>, they'll be mentioned with the milestones they follow. If you provide
-a coderef to summarise the arguments passed to them that will be included; if
-you decide that you don't need to see individual timings for each function call,
-just an overall time, you'll get a shorter list of function calls and an overall
-time.
+If you decide that you want to L<time individual functions as
+well|/time_function>, they'll be mentioned with the milestones they follow. If
+you provide a coderef to summarise the arguments passed to them that will be
+included; if you decide that you don't need to see individual timings for each
+function call, just an overall time, you'll get a shorter list of function
+calls and an overall time.
 
 =head2 Basic functionality
 
@@ -683,7 +683,7 @@ sub time_function {
 
 L<Timer::Simple>, which is simpler but more verbose.
 
-L<Devel::Timer>, which does similar things.
+L<Devel::Timer>, which does some similar things.
 
 L<Devel::NYTProf>, which is probably worth using as a first pass, even if you
 don't necessarily trust its idea of what's I<actually> slow.
