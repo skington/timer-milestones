@@ -28,10 +28,10 @@ This is version 0.001.
 
 =head1 SYNOPSIS
 
- use Timer::Milestones qw(start_timing add_milestone stop_timing
-     time_function);
+ use Timer::Milestones qw(:all);
 
  start_timing();
+ time_function('_my_own_function_elsewhere');
  time_function('Some::ThirdParty::Module::do_slow_thing');
 
  my @objects = _set_up_objects();
@@ -40,6 +40,22 @@ This is version 0.001.
 
  for my $object (@objects) {
      _do_something_potentially_slow($object);
+ 
+     # This code depends on a whole bunch of variables being set in the
+     # calling context, so don't bother refactoring it away into a separate
+     # function if it turns out that it's not actually slow.
+     state $code_to_time_individually = time_function(
+         sub {
+             ...
+         },
+         report_name_as  => 'Possibly slow inlined code',
+         summarise_calls => 1,
+         summarise_arguments => sub {
+             my ($object) = @_;
+             $object->type,
+         },
+     );
+     $code_to_time_individually->($object);
  }
 
  add_milestone('Telling the user')
@@ -58,9 +74,13 @@ Spits out to STDERR e.g.
  Everything set up
       5 min 30 s ( 31.22%)
           3 min  7 s Some::ThirdParty::Module::do_slow_thing
+         15 s Possibly slow inlined code (x10)
+             Outgoing (x7)
+             Incoming (x3)
  Telling the user
      12 min  7 s ( 68.78%)
           8 min 30 s Some::ThirdParty::Module::do_slow_thing (x3)
+         40 s _my_own_function_elsewhere
  END: Tue Feb  4 16:20:48 2020
 
 =head1 DESCRIPTION
