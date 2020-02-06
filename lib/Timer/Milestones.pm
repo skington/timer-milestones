@@ -87,9 +87,11 @@ Spits out to STDERR e.g.
 
 At its simplest, Timer::Milestones is yet another timer module. It is designed
 to have the smallest possible interface, so adding timing calls to your code
-doesn't make it look unreadable. It can also time execution time of functions
-in other modules, as a more informative (and quicker!) alternative to running
-everything under Devel::NYTProf.
+doesn't make it look unreadable.
+
+It can also time execution time of functions in other modules, as a more
+informative (and quicker!) alternative to running everything under
+Devel::NYTProf.
 
 =head2 Functional vs OO interface
 
