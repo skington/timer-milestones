@@ -7,7 +7,7 @@ use parent 'Exporter';
 
 use Carp;
 use PerlX::Maybe;
-use Scalar::Util qw(blessed);
+use Scalar::Util qw(blessed refaddr);
 
 our @EXPORT_OK = qw(start_timing add_milestone stop_timing
     generate_intermediate_report generate_final_report
@@ -522,12 +522,24 @@ sub generate_final_report {
 Stops timing, and spits out the result of L</generate_intermediate_report> to
 STDERR. This is called automatically in OO mode when the object goes out of
 scope. This does nothing if you've already called L</generate_final_report>.
+Also stops wrapping functions handed to L</time_function>.
 
 =cut
 
 sub stop_timing {
     my ($self) = _object_and_arguments(@_);
-    if (my $report = $self->generate_final_report) {
+
+    my $report = $self->generate_final_report;
+    if ($self->{wrapped_functions}) {
+        for my $function_data (@{ $self->{wrapped_functions} }) {
+            no strict 'refs';
+            no warnings 'redefine';
+            *{ $function_data->{function_name} } = $function_data->{orig_code};
+            use warnings 'redefine';
+            use strict 'refs';
+        }
+    }
+    if ($report) {
         $self->{notify_report} ||= $self->_default_notify_report;
         return $self->{notify_report}->($report);
     }
@@ -585,19 +597,17 @@ appear to be much slower than it is when not profiling.
 
 =head3 time_function
 
- In: $function_name
+ In: $function_name_or_coderef
  In: %args (optional)
+ Out: \&wrapped_function
 
-Supplied with a function name, e.g. C<DBIx::Class::Storage::DBI::_dbh_execute>,
-and an optional hash of arguments, wraps it with a temporary shim that records
-the time spent inside this function. That shim is removed, and the original
-code restored, when timing stops. Details of the functions called are included
-between milestones in the resulting report.
+Supplied with a function name or a coderef, and an optional hash of arguments,
+wraps it with a temporary shim that records the time spent inside this
+function. Details of the functions called are included between milestones in
+the resulting report.
 
-If the function is unqualified (i.e. doesn't contain C<::>) it is assumed to be
-a function in the calling package, and continues to be I<called> by its
-unqualified name in reports (i.e. the argument C<report_name_as) is set if
-it wasn't already).
+Returns the resulting wrapped function. This is useful if you supplied a coderef
+to be wrapped with timing code.
 
 Optional arguments are as follows:
 
@@ -619,28 +629,73 @@ identical return value from that coderef will be combined.
 
 =item report_name_as
 
-If specified, the name to use in reports.
+If specified, the name to use in reports instead of the default name.
 
 =back
+
+The exact behaviour of this function depends on the nature of the first
+argument, $function_name_or_coderef.
+
+=over
+
+=item *
+
+If you specify a fully-qualified function name (e.g.
+C<DBIx::Class::Storage::DBI::_execute>), time_function will look for that exact
+function, insert a wrapper into the symbol table, and use that full name in
+reports by default.
+
+=item *
+
+If you specify an unqualified function name (e.g. C<do_stuff>), it is assumed
+to be a function in the calling package, insert a wrapper into the symbol table,
+and the unqualified name will be used in reports by default.
+
+=item *
+
+If you specify a coderef, the symbol table will not be modified, and the default
+name in reports will be of the form C<CODE(0xdeadbeef)> - so if you're passing
+more than one coderef to time_function, strongly consider overriding the
+default name.
+
+=back
+
+When L</stop_timing> is called, all wrapping in the symbol table will be undone;
+but note that this means "what was in the symbol table when time_function was
+called will be put back". So if you decide that you want to time the same
+function with two separate Timer::Milestones objects, it is very important to
+stop timing in the reverse order that you started timing.
 
 =cut
 
 sub time_function {
-    my ($self, $function_name, %args) = _object_and_arguments(@_);
+    my ($self, $function_name_or_coderef, %args) = _object_and_arguments(@_);
 
-    # If the function is unqualified, look for it in the calling package.
-    if ($function_name !~ /::/) {
-        $args{report_name_as} ||= $function_name;
-        my ($package) = caller();
-        $function_name = $package . '::' . $function_name;
-    }
+    my ($function_name, $orig_code, $modify_symbol_table);
 
-    # There had better be a function of this name.
-    no strict 'refs';
-    my $orig_code = \&{ $function_name };
-    use strict 'refs';
-    if (!defined &$orig_code) {
-        die "No such function as $function_name";
+    # If we were passed a coderef, that's simple enough.
+    if (ref($function_name_or_coderef) eq 'CODE') {
+        $orig_code     = $function_name_or_coderef;
+        $function_name = sprintf('CODE(0x%x)', refaddr($orig_code));
+    } else {
+        # OK, find the code corresponding to this function name.
+        $function_name = $function_name_or_coderef;
+        $modify_symbol_table = 1;
+
+        # If the function is unqualified, look for it in the calling package.
+        if ($function_name !~ /::/) {
+            $args{report_name_as} ||= $function_name;
+            my ($package) = caller();
+            $function_name = $package . '::' . $function_name;
+        }
+
+        # There had better be a function of this name.
+        no strict 'refs';
+        $orig_code = \&{$function_name};
+        use strict 'refs';
+        if (!defined &$orig_code) {
+            die "No such function as $function_name";
+        }
     }
 
     # OK, generate a wrapper.
@@ -691,19 +746,25 @@ sub time_function {
         }
     };
 
-    # And install that.
-    no strict 'refs';
-    no warnings 'redefine';
-    *{ $function_name } = $wrapper;
-    use warnings 'redefine';
-    use strict 'refs';
+    # Maybe install that wrapper (and remember to uninstall it later).
+    if ($modify_symbol_table) {
+        no strict 'refs';
+        no warnings 'redefine';
+        *{$function_name} = $wrapper;
+        use warnings 'redefine';
+        use strict 'refs';
 
-    # Remember that we did this, so we can unwind it all.
-    push @{ $self->{wrapped_functions} ||= [] },
-        {
-        function_name => $function_name,
-        orig_code     => $orig_code,
-        };
+        push @{ $self->{wrapped_functions} ||= [] },
+            {
+            function_name => $function_name,
+            orig_code     => $orig_code,
+            };
+    }
+
+    # And return the wrapper, in case the calling code wants to use it
+    # (most obviously if it was a coderef that wasn't added to the symbol
+    # table)
+    return $wrapper;
 }
 
 =head1 SEE ALSO
