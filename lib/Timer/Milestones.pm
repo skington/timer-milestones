@@ -15,7 +15,7 @@ our @EXPORT_OK = qw(start_timing add_milestone stop_timing
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
 # Have you updated the version number in the POD below?
-our $VERSION = '0.001';
+our $VERSION = '0.002';
 $VERSION = eval $VERSION;
 
 =head1 NAME
@@ -24,7 +24,7 @@ Timer::Milestones - measure code execution time succinctly by setting milestones
 
 =head1 VERSION
 
-This is version 0.001.
+This is version 0.002.
 
 =head1 SYNOPSIS
 
