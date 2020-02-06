@@ -24,6 +24,7 @@ use warnings 'redefine';
 test_validity();
 test_timing();
 test_pass_through();
+test_exported_function();
 
 done_testing();
 
@@ -140,6 +141,47 @@ sub test_pass_through {
         'Return value correct in list context'
     );
     is($provided, '2 arguments', 'Arguments passed in list contet');
+}
+
+# We can use exported functions as well as the OO interface for this.
+# This also tests that we can use unqualified function names passed to
+# time_function.
+
+sub test_exported_function {
+    sub it_only_matters_that_we_call_it { }
+    sub this_one_matters_even_less { }
+    start_timing();
+    time_function('it_only_matters_that_we_call_it');
+    time_function('this_one_matters_even_less', summarise_calls => 1);
+    it_only_matters_that_we_call_it();
+    for (1..3) {
+        this_one_matters_even_less();
+    }
+    add_milestone('Part-way through');
+    my $report = generate_intermediate_report();
+    like($report, my $re_partial = qr{
+        ^
+        START: \s [^\n]+ \n
+        [^\n]+ \n # Don't worry about the timing for this milestone
+        \s+ \d+ \s ms \s it_only_matters_that_we_call_it \n
+        \s+ \d+ \s ms \s this_one_matters_even_less \s [(] x3 [)] \n
+        Part-way \s through
+    }xsm, 'Got subroutine calls in the first part');
+    
+    it_only_matters_that_we_call_it();
+    it_only_matters_that_we_call_it();
+    $report = generate_final_report();
+    like($report,
+        qr{
+            ^
+            $re_partial \n
+            [^\n]+ \n # Don't worry about timing for this second part either
+            ( \s+ \d+ \s ms \s it_only_matters_that_we_call_it \n ){2}
+            END: \s .+
+            $
+        }xsm,
+        'Got subroutine calls in the second part as well'
+    );
 }
 
 1;

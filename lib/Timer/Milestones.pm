@@ -6,9 +6,12 @@ use warnings;
 use parent 'Exporter';
 
 use Carp;
+use PerlX::Maybe;
 use Scalar::Util qw(blessed);
 
-our @EXPORT_OK = qw(start_timing add_milestone stop_timing time_function);
+our @EXPORT_OK = qw(start_timing add_milestone stop_timing
+    generate_intermediate_report generate_final_report
+    time_function);
 our %EXPORT_TAGS = (all => \@EXPORT_OK);
 
 # Have you updated the version number in the POD below?
@@ -334,13 +337,15 @@ sub _add_function_call_to_list {
     my ($self, $function_call, $call_elements) = @_;
 
     my $elapsed_time = $function_call->{ended} - $function_call->{started};
+    my $function_name = $function_call->{report_name_as}
+        // $function_call->{function_name};
 
     # If we're not summarising calls, we're going to add another element,
     # so just do that.
     if (!$function_call->{summarise_calls}) {
         my $element = {
             type          => 'function_call',
-            function_name => $function_call->{function_name},
+            function_name => $function_name,
             elapsed_time  => $elapsed_time,
         };
         if (exists $function_call->{argument_summary}) {
@@ -357,13 +362,12 @@ sub _add_function_call_to_list {
 
     # OK, find out which element we're going to use.
     my ($element)
-        = grep { $_->{function_name} eq $function_call->{function_name} }
-        @$call_elements;
+        = grep { $_->{function_name} eq $function_name } @$call_elements;
     if (!$element) {
         push @{$call_elements},
             {
             type          => 'function_call',
-            function_name => $function_call->{function_name},
+            function_name => $function_name,
             elapsed_time  => 0,
             };
         $element = $call_elements->[-1];
@@ -590,6 +594,11 @@ the time spent inside this function. That shim is removed, and the original
 code restored, when timing stops. Details of the functions called are included
 between milestones in the resulting report.
 
+If the function is unqualified (i.e. doesn't contain C<::>) it is assumed to be
+a function in the calling package, and continues to be I<called> by its
+unqualified name in reports (i.e. the argument C<report_name_as) is set if
+it wasn't already).
+
 Optional arguments are as follows:
 
 =over
@@ -608,12 +617,23 @@ will also mention all subsequent calls.
 This can combine with C<summarise_arguments>: calls which result in an
 identical return value from that coderef will be combined.
 
+=item report_name_as
+
+If specified, the name to use in reports.
+
 =back
 
 =cut
 
 sub time_function {
     my ($self, $function_name, %args) = _object_and_arguments(@_);
+
+    # If the function is unqualified, look for it in the calling package.
+    if ($function_name !~ /::/) {
+        $args{report_name_as} ||= $function_name;
+        my ($package) = caller();
+        $function_name = $package . '::' . $function_name;
+    }
 
     # There had better be a function of this name.
     no strict 'refs';
@@ -632,8 +652,9 @@ sub time_function {
         # Take a snapshot before we called it.
         push @{ $self->{milestones}[-1]{function_calls} ||= [] },
             my $function_call = {
-            function_name => $function_name,
-            started       => $self->_now,
+            function_name        => $function_name,
+            started              => $self->_now,
+            maybe report_name_as => $args{report_name_as},
             };
 
         # Remember that we want to summarise these calls if necessary.
