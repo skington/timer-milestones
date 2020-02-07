@@ -359,8 +359,10 @@ sub _add_function_call_to_list {
     my ($self, $function_call, $call_elements) = @_;
 
     my $elapsed_time = $function_call->{ended} - $function_call->{started};
-    my $function_name = $function_call->{report_name_as}
-        // $function_call->{function_name};
+    my $function_name = $function_call->{report_name_as};
+    if (!defined $function_name) {
+        $function_name = $function_call->{function_name};
+    }
 
     # If we're not summarising calls, we're going to add another element,
     # so just do that.
