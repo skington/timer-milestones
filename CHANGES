@@ -1,3 +1,39 @@
+0.003 2020-03-03
+
+    [Bug fix]
+
+        Uses floating-point with no decimal places rather than integers to
+        avoid rounding errors on Perls compiled with long doubles
+        (which is ironically supposed to give you *more* precision).
+
+        Compiles under perl 5.8.9.
+
+0.002 2020-02-06
+
+    [Features]
+
+        You can supply a coderef to time instead of a function name; the
+        resulting wrapped coderef is returned to you.
+    
+        You can supply the name of a function in your own package to
+        time_function() without having to fully-quantify it.
+        
+        You can supply an alternate name to use in reports instead of the
+        function name you specified. This is most obviously useful when you
+        supply a coderef.
+        
+    [Bug fix]
+    
+        Some functions weren't marked as exportable: add_milestone was
+        misspelled; generate_intermediate_report and generate_final_report
+        were omitted entirely.
+        
+        Functions weren't being unwrapped when timing stopped.
+
+    [Documentation]
+
+        Various documentation fixes.
+
 0.001 2020-02-04
 
     Initial release.
