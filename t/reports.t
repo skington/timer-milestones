@@ -191,7 +191,7 @@ sub test_time_function {
         250 ms Obvious::Suspect::actually_pretty_efficient
 Finished chugging through set-up
     10 s ( 57.41%)
-        464 ms Obvious::Suspect::slow_but_could_be_worse
+        465 ms Obvious::Suspect::slow_but_could_be_worse
            8 s Obscure::Package::pathological_problem
 Done the hard work
      2 s ( 13.17%)
